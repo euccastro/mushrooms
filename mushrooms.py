@@ -1,3 +1,9 @@
+# Raw data imported from
+#
+#     Frank, A. & Asuncion, A. (2010). UCI Machine Learning Repository
+#     [http://archive.ics.uci.edu/ml]. Irvine, CA: University of California,
+#     School of Information and Computer Science.
+
 from itertools import chain
 
 def transpose(ls):
