@@ -33,6 +33,11 @@ def one_to_many(row, group_counts):
          for index in xrange(gc)]
         for row_index, gc in zip(row, group_counts)))
 
+def split_data(mix, ywidth):
+    ys = [row[:ywidth] for row in mix]
+    inputs = [row[ywidth:] for row in mix]
+    return inputs, ys
+
 def prep(filename):
     input_list = make_input_list(filename)
     groups = collect_groups(input_list)
@@ -40,11 +45,13 @@ def prep(filename):
     for row in input_list + [groups]:
         remove_indices(row, singleton_indices)
     ixs = indices(input_list, groups)
+    ixs, ys = split_data(ixs, 1)
     gc = get_options_count(groups)
-    return [one_to_many(row, gc)
-            for row in ixs]
+    inputs = [one_to_many(row, gc)
+              for row in ixs]
+    return inputs, ys
 
-def test_running():
+def test_prep():
     input_list = [[1, 2, 3, 4, 5, 4, 6],
                   [2, 1, 2, 4, 3, 6, 4],
                   [3, 1, 1, 4, 2, 4, 3]]
@@ -66,20 +73,71 @@ def test_running():
     assert ixs == [[0, 1, 2, 2, 0, 2],
                    [1, 0, 1, 1, 1, 1],
                    [2, 0, 0, 0, 0, 0]]
+    ixs, ys = split_data(ixs, 1)
+    groups.pop(0)
+    assert ixs, ys == (
+            [[0, 1, 2, 2, 0, 2],
+             [1, 0, 1, 1, 1, 1],
+             [2, 0, 0, 0, 0, 0]]
+            [0, 1, 2])
     gc = get_options_count(groups)
-    assert gc == [3, 2, 3, 3, 2, 3]
+    assert gc == [2, 3, 3, 2, 3]
     otm = [one_to_many(row, gc)
            for row in ixs]
-    assert otm == [[1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 0, 0, 0, 1],
-                   [0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0],
-                   [0, 0, 1, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0]]
+    assert otm == [[0, 1, 0, 0, 1, 0, 0, 1, 1, 0, 0, 0, 1],
+                   [1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0],
+                   [1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0]]
+
+def test_train():
+    from pybrain import datasets as ds
+    from pybrain.tools.shortcuts import buildNetwork
+    from pybrain.structure.modules import SoftmaxLayer
+    from pybrain.supervised.trainers import BackpropTrainer
+    from pybrain.utilities import percentError
+
+    inputs, ys = prep("raw_data")
+    row_length = len(inputs[0])
+    d = ds.ClassificationDataSet(
+        row_length, nb_classes=2, class_labels=['Poisonous',
+                                                'Edible'])
+    d.setField('input', inputs)
+    d.setField('target', ys)
+    test, train = d.splitWithProportion(.25)
+    test._convertToOneOfMany()
+    train._convertToOneOfMany()
+
+    hidden = row_length // 2
+    net = buildNetwork(train.indim,
+                       hidden,
+                       train.outdim,
+                       outclass=SoftmaxLayer)
+    trainer = BackpropTrainer(net,
+                              dataset=train,
+                              momentum=0.0,
+                              learningrate=0.1,
+                              verbose=True,
+                              weightdecay=0.0)
+    #import pdb
+    #pdb.set_trace()
+    for i in xrange(20):
+        trainer.trainEpochs(1)
+        trnresult = percentError(trainer.testOnClassData(),
+                                  train['class'])
+        tstresult = percentError(
+                trainer.testOnClassData(dataset=test),
+                test['class'])
+        print "epoch: %4d" % trainer.totalepochs, \
+              "  train error: %5.2f%%" % trnresult, \
+              "  test error: %5.2f%%" % tstresult
+    return d
 
 def test_get_singleton_indices():
     assert get_singleton_indices([[1, 2], [3], [4, 5, 4], [6]]) == [1, 3]
 
 def test():
     test_get_singleton_indices()
-    test_running()
+    test_prep()
+    test_train()
     print "All OK."
 
 test()
